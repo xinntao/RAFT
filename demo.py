@@ -50,6 +50,11 @@ def demo(args):
     model.eval()
 
     def run_once(img1, img2):
+        img1 = torch.from_numpy(img1).permute(
+            2, 0, 1).float().unsqueeze(0).to(DEVICE)
+        img2 = torch.from_numpy(img2).permute(
+            2, 0, 1).float().unsqueeze(0).to(DEVICE)
+
         with torch.no_grad():
             padder = InputPadder(img1.shape)
             img1, img2 = padder.pad(img1, img2)
@@ -69,8 +74,8 @@ def demo(args):
     mmcv.utils.mkdir_or_exist(save_warped_folder)
     mmcv.utils.mkdir_or_exist(save_warped_folder_512)
 
-    img_ref = load_image(ref_path)
-    img_ref_512 = load_image(ref_path_512)
+    img_ref = cv2.imread(ref_path)
+    img_ref_512 = cv2.imread(ref_path_512)
     # whether bicubic upsample
     # h, w, _ = img_ref.shape
     # img_ref = cv2.resize(
@@ -81,7 +86,7 @@ def demo(args):
         basename = os.path.splitext(os.path.basename(img_path))[0]
         print(idx, basename)
         # read image
-        img_input = load_image(img_path)
+        img_input = cv2.imread(img_path)
         # whether bicubic upsample
         # h, w, _ = img_input.shape
         # img_input = cv2.resize(
@@ -101,7 +106,8 @@ def demo(args):
 
         # save flow
         # tensor to numpy
-        flow_np = flow_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)  # [h, w, 2]
+        flow_np = flow_tensor.squeeze(0).cpu().numpy().transpose(
+            1, 2, 0)  # [h, w, 2]
         flow_np = np.ascontiguousarray(flow_np, dtype=np.float32)
         flow_vis = mmcv.visualization.optflow.flow2rgb(flow_np)
         mmcv.imwrite(flow_vis * 255,
