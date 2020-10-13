@@ -101,7 +101,7 @@ def demo(args):
 
         # save flow
         # tensor to numpy
-        flow_np = flow_tensor.numpy().transpose(1, 2, 0)  # [h, w, 2]
+        flow_np = flow_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)  # [h, w, 2]
         flow_np = np.ascontiguousarray(flow_np, dtype=np.float32)
         flow_vis = mmcv.visualization.optflow.flow2rgb(flow_np)
         mmcv.imwrite(flow_vis * 255,
