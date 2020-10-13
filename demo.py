@@ -60,7 +60,7 @@ def demo(args):
             img1, img2 = padder.pad(img1, img2)
 
             flow_low, flow_up = model(img1, img2, iters=20, test_mode=True)
-        return flow_up
+        return flow_up.squeeze(0).cpu()
 
     import cv2
     data_root = 'high_res_motion_transfer/256_testdata/celeba_00000000'
@@ -106,8 +106,7 @@ def demo(args):
 
         # save flow
         # tensor to numpy
-        flow_np = flow_tensor.squeeze(0).cpu().numpy().transpose(
-            1, 2, 0)  # [h, w, 2]
+        flow_np = flow_tensor.numpy().transpose(1, 2, 0)  # [h, w, 2]
         flow_np = np.ascontiguousarray(flow_np, dtype=np.float32)
         flow_vis = mmcv.visualization.optflow.flow2rgb(flow_np)
         mmcv.imwrite(flow_vis * 255,
