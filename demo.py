@@ -1,12 +1,13 @@
 import sys
 
 sys.path.append('core')
-
 import argparse
 import glob
 import os
+import os.path as osp
 
 import cv2
+import mmcv
 import numpy as np
 import torch
 from PIL import Image
@@ -48,20 +49,87 @@ def demo(args):
     model.to(DEVICE)
     model.eval()
 
-    with torch.no_grad():
-        images = glob.glob(os.path.join(args.path, '*.png')) + \
-                 glob.glob(os.path.join(args.path, '*.jpg'))
+    def run_once(img1, img2):
+        with torch.no_grad():
+            padder = InputPadder(img1.shape)
+            img1, img2 = padder.pad(img1, img2)
 
-        images = sorted(images)
-        for imfile1, imfile2 in zip(images[:-1], images[1:]):
-            image1 = load_image(imfile1)
-            image2 = load_image(imfile2)
+            flow_low, flow_up = model(img1, img2, iters=20, test_mode=True)
+        return flow_up
 
-            padder = InputPadder(image1.shape)
-            image1, image2 = padder.pad(image1, image2)
+    import cv2
+    data_root = 'high_res_motion_transfer/256_testdata/celeba_00000000'
+    ref_path = 'high_res_motion_transfer/celeba_00000000_256.png'
+    ref_path_512 = 'high_res_motion_transfer/celeba_00000000_512.png'
 
-            flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
-            viz(image1, flow_up)
+    save_flow_folder = 'results/flow'
+    save_warped_folder = 'results/warp'
+    save_warped_folder_512 = 'results/warp_512'
+    mmcv.utils.mkdir_or_exist(save_flow_folder)
+    mmcv.utils.mkdir_or_exist(save_warped_folder)
+    mmcv.utils.mkdir_or_exist(save_warped_folder_512)
+
+    img_ref = load_image(ref_path)
+    img_ref_512 = load_image(ref_path_512)
+    # whether bicubic upsample
+    # h, w, _ = img_ref.shape
+    # img_ref = cv2.resize(
+    #     img_ref, (w * 4, h * 4), interpolation=cv2.INTER_CUBIC)
+
+    img_paths = sorted(glob.glob(os.path.join(data_root, '*')))
+    for idx, img_path in enumerate(img_paths):
+        basename = os.path.splitext(os.path.basename(img_path))[0]
+        print(idx, basename)
+        # read image
+        img_input = load_image(img_path)
+        # whether bicubic upsample
+        # h, w, _ = img_input.shape
+        # img_input = cv2.resize(
+        #     img_input, (w * 4, h * 4), interpolation=cv2.INTER_CUBIC)
+        # caulcate flow from img_input (e.g., 049) to img_ref (050)
+        flow_tensor = run_once(img_input, img_ref)  # [2, h, w]
+
+        # downsample flow
+        # c, h, w = flow_tensor.size()
+        # flow_tensor = torch.nn.functional.interpolate(
+        #     input=flow_tensor.unsqueeze_(0),
+        #     size=(h // 4, w // 4),
+        #     mode='bicubic',
+        #     align_corners=False)
+        # flow_tensor = flow_tensor / 4
+        # flow_tensor.squeeze_(0)
+
+        # save flow
+        # tensor to numpy
+        flow_np = flow_tensor.numpy().transpose(1, 2, 0)  # [h, w, 2]
+        flow_np = np.ascontiguousarray(flow_np, dtype=np.float32)
+        flow_vis = mmcv.visualization.optflow.flow2rgb(flow_np)
+        mmcv.imwrite(flow_vis * 255,
+                     osp.join(save_flow_folder, f'{basename}_flow.png'))
+        # warp
+        warped_img = mmcv.video.flow_warp(
+            img_ref, flow_np, filling_value=0, interpolate_mode='bilinear')
+        # save warped images
+        mmcv.imwrite(warped_img,
+                     osp.join(save_warped_folder, f'{basename}_warped.png'))
+
+        c, h, w = flow_tensor.size()
+        flow_tensor = torch.nn.functional.interpolate(
+            input=flow_tensor.unsqueeze_(0),
+            size=(h * 2, w * 2),
+            mode='bicubic',
+            align_corners=False)
+        flow_tensor = flow_tensor * 2
+        flow_tensor.squeeze_(0)
+        flow_np = flow_tensor.numpy().transpose(1, 2, 0)  # [h, w, 2]
+        flow_np = np.ascontiguousarray(flow_np, dtype=np.float32)
+        # warp
+        warped_img_512 = mmcv.video.flow_warp(
+            img_ref_512, flow_np, filling_value=0, interpolate_mode='bilinear')
+        # save warped images
+        mmcv.imwrite(
+            warped_img_512,
+            osp.join(save_warped_folder_512, f'{basename}_warped.png'))
 
 
 if __name__ == '__main__':
