@@ -1,47 +1,59 @@
 import sys
+
 sys.path.append('core')
 
-from PIL import Image
 import argparse
 import os
 import time
+
+# mpl.use('Agg')
+import datasets
+# import matplotlib as mpl
 import numpy as np
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-
-import datasets
-from utils import flow_viz
-from utils import frame_utils
-
+from PIL import Image
+# import matplotlib.pyplot as plt
 from raft import RAFT
+from utils import flow_viz, frame_utils
 from utils.utils import InputPadder, forward_interpolate
 
 
 @torch.no_grad()
-def create_sintel_submission(model, iters=32, warm_start=False, output_path='sintel_submission'):
+def create_sintel_submission(model,
+                             iters=32,
+                             warm_start=False,
+                             output_path='sintel_submission'):
     """ Create submission for the Sintel leaderboard """
     model.eval()
     for dstype in ['clean', 'final']:
-        test_dataset = datasets.MpiSintel(split='test', aug_params=None, dstype=dstype)
-        
+        test_dataset = datasets.MpiSintel(
+            split='test', aug_params=None, dstype=dstype)
+
         flow_prev, sequence_prev = None, None
         for test_id in range(len(test_dataset)):
             image1, image2, (sequence, frame) = test_dataset[test_id]
             if sequence != sequence_prev:
                 flow_prev = None
-            
-            padder = InputPadder(image1.shape)
-            image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
 
-            flow_low, flow_pr = model(image1, image2, iters=iters, flow_init=flow_prev, test_mode=True)
+            padder = InputPadder(image1.shape)
+            image1, image2 = padder.pad(image1[None].cuda(),
+                                        image2[None].cuda())
+
+            flow_low, flow_pr = model(
+                image1,
+                image2,
+                iters=iters,
+                flow_init=flow_prev,
+                test_mode=True)
             flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
 
             if warm_start:
                 flow_prev = forward_interpolate(flow_low[0])[None].cuda()
-            
+
             output_dir = os.path.join(output_path, dstype, sequence)
-            output_file = os.path.join(output_dir, 'frame%04d.flo' % (frame+1))
+            output_file = os.path.join(output_dir,
+                                       'frame%04d.flo' % (frame + 1))
 
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -109,7 +121,8 @@ def validate_sintel(model, iters=32):
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
 
-            flow_low, flow_pr = model(image1, image2, iters=iters, test_mode=True)
+            flow_low, flow_pr = model(
+                image1, image2, iters=iters, test_mode=True)
             flow = padder.unpad(flow_pr[0]).cpu()
 
             epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
@@ -117,11 +130,12 @@ def validate_sintel(model, iters=32):
 
         epe_all = np.concatenate(epe_list)
         epe = np.mean(epe_all)
-        px1 = np.mean(epe_all<1)
-        px3 = np.mean(epe_all<3)
-        px5 = np.mean(epe_all<5)
+        px1 = np.mean(epe_all < 1)
+        px3 = np.mean(epe_all < 3)
+        px5 = np.mean(epe_all < 5)
 
-        print("Validation (%s) EPE: %f, 1px: %f, 3px: %f, 5px: %f" % (dstype, epe, px1, px3, px5))
+        print("Validation (%s) EPE: %f, 1px: %f, 3px: %f, 5px: %f" %
+              (dstype, epe, px1, px3, px5))
         results[dstype] = np.mean(epe_list)
 
     return results
@@ -152,7 +166,7 @@ def validate_kitti(model, iters=24):
         mag = mag.view(-1)
         val = valid_gt.view(-1) >= 0.5
 
-        out = ((epe > 3.0) & ((epe/mag) > 0.05)).float()
+        out = ((epe > 3.0) & ((epe / mag) > 0.05)).float()
         epe_list.append(epe[val].mean().item())
         out_list.append(out[val].cpu().numpy())
 
@@ -171,8 +185,12 @@ if __name__ == '__main__':
     parser.add_argument('--model', help="restore checkpoint")
     parser.add_argument('--dataset', help="dataset for evaluation")
     parser.add_argument('--small', action='store_true', help='use small model')
-    parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
-    parser.add_argument('--alternate_corr', action='store_true', help='use efficent correlation implementation')
+    parser.add_argument(
+        '--mixed_precision', action='store_true', help='use mixed precision')
+    parser.add_argument(
+        '--alternate_corr',
+        action='store_true',
+        help='use efficent correlation implementation')
     args = parser.parse_args()
 
     model = torch.nn.DataParallel(RAFT(args))
@@ -193,5 +211,3 @@ if __name__ == '__main__':
 
         elif args.dataset == 'kitti':
             validate_kitti(model.module)
-
-
