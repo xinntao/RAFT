@@ -1,21 +1,21 @@
 import sys
+
 sys.path.append('core')
 
 import argparse
-import os
-import cv2
 import glob
+import os
+
+import cv2
 import numpy as np
 import torch
 from PIL import Image
-
 from raft import RAFT
 from utils import flow_viz
 from utils.utils import InputPadder
 
-
-
 DEVICE = 'cuda'
+
 
 def load_image(imfile):
     img = np.array(Image.open(imfile)).astype(np.uint8)
@@ -24,9 +24,9 @@ def load_image(imfile):
 
 
 def viz(img, flo):
-    img = img[0].permute(1,2,0).cpu().numpy()
-    flo = flo[0].permute(1,2,0).cpu().numpy()
-    
+    img = img[0].permute(1, 2, 0).cpu().numpy()
+    flo = flo[0].permute(1, 2, 0).cpu().numpy()
+
     # map flow to rgb image
     flo = flow_viz.flow_to_image(flo)
     img_flo = np.concatenate([img, flo], axis=0)
@@ -35,8 +35,9 @@ def viz(img, flo):
     # plt.imshow(img_flo / 255.0)
     # plt.show()
 
-    cv2.imshow('image', img_flo[:, :, [2,1,0]]/255.0)
-    cv2.waitKey()
+    # cv2.imshow('image', img_flo[:, :, [2,1,0]]/255.0)
+    # cv2.waitKey()
+    cv2.imwrite('test.png', flo)
 
 
 def demo(args):
@@ -50,7 +51,7 @@ def demo(args):
     with torch.no_grad():
         images = glob.glob(os.path.join(args.path, '*.png')) + \
                  glob.glob(os.path.join(args.path, '*.jpg'))
-        
+
         images = sorted(images)
         for imfile1, imfile2 in zip(images[:-1], images[1:]):
             image1 = load_image(imfile1)
@@ -68,8 +69,12 @@ if __name__ == '__main__':
     parser.add_argument('--model', help="restore checkpoint")
     parser.add_argument('--path', help="dataset for evaluation")
     parser.add_argument('--small', action='store_true', help='use small model')
-    parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
-    parser.add_argument('--alternate_corr', action='store_true', help='use efficent correlation implementation')
+    parser.add_argument(
+        '--mixed_precision', action='store_true', help='use mixed precision')
+    parser.add_argument(
+        '--alternate_corr',
+        action='store_true',
+        help='use efficent correlation implementation')
     args = parser.parse_args()
 
     demo(args)
